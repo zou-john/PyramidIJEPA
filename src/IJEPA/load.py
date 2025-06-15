@@ -99,7 +99,7 @@ def init_model(
 
 def load_pretrained_model(
     cfg_path='src/IJEPA/in1k_vith14_ep300.yaml',
-    model_path='/users/sboughan/scratch/cs2952n/IN1K-vit.h.14-300e.pth.tar',
+    model_path='/users/IN1K-vit.h.14-300e.pth.tar',
     device=None,
     freeze_encoder=True,
     freeze_target=True,

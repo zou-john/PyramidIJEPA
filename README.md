@@ -27,7 +27,9 @@ Below is an explanation of the codebase that should be understood incrementally:
   - Vision Transformer Predictor for masked image modeling
   - Support for both patch-based and convolutional embeddings
   - Implementation of attention mechanisms, MLP blocks, and positional embeddings
-  - Flexible masking strategies for self-supervised learning
+  - Flexible masking strategies for self-supervised learning with:
+    - Encoder mask scale (85-100%): Encoder sees 85-100% of the image to learn good representations
+    - Predictor mask scale (15-20%): Size of regions that the predictor needs to predict, using encoder's context from the rest of the image
 
 - `src/IJEPA/load.py`: Handles model initialization and loading functionality, providing:
   - Model initialization with configurable architecture parameters
@@ -36,7 +38,9 @@ Below is an explanation of the codebase that should be understood incrementally:
   through the configuration yaml file: `src/IJEPA/in1k_vith14_ep300.yaml` which is the model's parameters
   - Support for both CPU and CUDA devices
 
-- 
+- `src/dataset/cifar10.py`: Loads the CIFAR10 dataset
+- `src/dataset/cifar100.py`: Loads the CIFAR100 dataset
+- `src/dataset/imagenet_1k.py`: Lodas the ImageNet-1K dataset
 
 
 
