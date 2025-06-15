@@ -1,0 +1,13 @@
+webdataset
+flatten_json
+numpy
+torch
+matplotlib
+torchvision
+einops
+toolz
+scikit-learn
+aiohttp
+
+# A lot of training pipelines are based on this library
+git+https://github.com/rbalestr-lab/stable-ssl
