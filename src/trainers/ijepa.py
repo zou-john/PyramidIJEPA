@@ -127,10 +127,16 @@ class IJEPATrainer(JointEmbeddingPredictiveTrainer):
 
         # extract the context patches
         context_representation = self.forward_context(image, mask_context_keep)
+        # - Has access to the visible patches
+        # - Has mask tokens in masked regions
+        # - Shape: [B, num_patches, hidden_dimension]
 
-        # extract the target patches
+        # extract the overall and target patches
         whole_image_representation, target_representation = self.forward_target(image, mask_target_keep)
-
+        # - target_patches: Only has the masked regions visible
+        # - overall_patches: Has all the patches visible
+        # - Shape: [B, num_patches, hidden_dimension]
+        
         self._latest_embedding = self._latest_representation = whole_image_representation
 
         # compute the loss: patch wise l2 loss
