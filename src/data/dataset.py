@@ -1,14 +1,19 @@
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple
 import torch
 import torchvision
-import math
+from torch.utils.data import random_split
 
-# for default usage we use the CIFAR10 dataset
-from src.dataset.cifar10 import CIFAR10_MEAN, CIFAR10_STD
-from src.dataset.mask import RandomMask, MultiBlock
+from src.data.blurred_imagenet import BLURRED_IMAGENET_MEAN, BLURRED_IMAGENET_STD, make_blurred_imagenet_dataset
 
 # ===============================
-# NORMALIZATION (TRAININGAND DENORMALIZATION (RECONSTRUCTION)
+# NORMALIZATION CONSTANTS
+# ===============================
+CIFAR10_MEAN, CIFAR10_STD = (0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)
+CIFAR100_MEAN, CIFAR100_STD = (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
+BLURRED_IMAGENET_MEAN, BLURRED_IMAGENET_STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+
+# ===============================
+# NORMALIZATION (TRAINING) AND DENORMALIZATION (RECONSTRUCTION)
 # ===============================
 def denormalize_image_fn(mean=CIFAR10_MEAN, std=CIFAR10_STD):
     """
@@ -39,7 +44,7 @@ def normalize_image(image: torch.Tensor, mean=CIFAR10_MEAN, std=CIFAR10_STD):
     return normalize_image_fn(mean, std)(image)
 
 # ===============================
-# DATASET AUGMENTATION
+# DATASET AUGMENTATION (DEFAULT)
 # ===============================
 def get_transforms(
     normalization,
@@ -66,65 +71,68 @@ def get_transforms(
     ])
 
 # ===============================
-# MASKING STRATEGY
+# GET DATASET
 # ===============================
-def collate_supervised(batch: list[dict[str, torch.Tensor]]):
+def get_dataset(
+        dataset: Literal['cifar10', 'cifar100', 'blurred_imagenet'] = 'cifar10', # datasets
+        pretrain: bool = True, # there is a different set for pretraining and finetuning
+        validation: bool = False, # whether we use the validation set
+        crop_size: int = 28, # the size of the crop
+        download: bool = True, # whether to download the dataset
+        unsample: Optional[int] = None, # the size of the image after resizing
+        scale: Tuple[float, float] = (0.3, 1.0), # the scale of the crop    
+        imagenet_num_classes: Literal[10, 100, 1000] = 1000, # the number of classes in the imagenet dataset
+        **imagenet_download_kwargs
+    ):
     """
-    Collate a batch of data for supervised training.
+    Returns a dataset object for the given dataset.
+    If dataset is 'cifar10', 'cifar100', or 'imagenet', it will return a torchvision.datasets.Dataset object.
+    If dataset is 'blurred_imagenet', it will return a HuggingFaceDataset object.
     """
-    # a full batch is a list of dictionaries with the following keys: 'image', 'label'
-    images, labels = zip(*batch)
-    # [1, C, H, W], [1, C, H, W] ... B -> [B, C, H, W]
-    stacked_images = torch.stack(images, dim=0).squeeze(1)
-    # [1], [1] ... B -> [B]
-    stacked_labels = torch.stack(labels, dim=0)
-
-    return stacked_images, stacked_labels
-
-def collate_masked(
-    mask_generator: RandomMask | MultiBlock = RandomMask,
-    downsampling_variant: Literal['fine',
-                                  'coarse',
-                                  'full_downsampled',
-                                  'full_resampled',
-                                  'none',
-                                  ] = 'full_downsampled',
-    num_scales: int = 1, 
-    num_patches: int = 16
-):
-    """
-    Collate a batch of data for masked training.
-    """
-    # NOTE: assuming it is square images
-    latent_height = latent_width = int(math.sqrt(num_patches))
-    # contraints the number of scales if exceeded the nummber of square root downsampling
-    # EXAMPLE: for a latent width of 25 x 40 and the parameter num_scales = 5, the number of scales will be 1 + min(5, math.floor(math.log2(min(25, 40)))) = 3
-    # which means you can only have 4 scales.
-    num_scales = 1 + min(num_scales, math.floor(math.log2(min(latent_height, latent_width))))
-
-    mask_data 
-    # create a mask generator
-    mask_generator = mask_generator(
-        latent_height,
-        latent_width,
-        num_scales,
-        downsampling_variant
+    # get the mean and std of the dataset
+    if dataset == 'cifar10':
+        mean, std = CIFAR10_MEAN, CIFAR10_STD
+    elif dataset == 'cifar100':
+        mean, std = CIFAR100_MEAN, CIFAR100_STD
+    elif dataset == 'blurred_imagenet':
+        mean, std = BLURRED_IMAGENET_MEAN, BLURRED_IMAGENET_STD
+    else:
+        raise ValueError(f"Invalid dataset: {dataset}")
+    
+    # get the transforms for the dataset
+    transforms = get_transforms(
+        normalization=normalize_image_fn(mean, std),
+        unsample=unsample,
+        crop_size=crop_size,
+        scale=scale,
+        pretrain=pretrain
     )
 
-
+    # pretrain and validation sets are different for each dataset
+    match (pretrain, validation):
+        case (True, True):
+            split = 'pretrain' 
+        case (True, False):
+            split = 'finetune_train' 
+        case (False, True):
+            split = 'finetune_validation'
     
-    # a full batch is a list of dictionaries with the following keys: 'image', 'label'
-    images, labels = zip(*batch)
-    # [1, C, H, W], [1, C, H, W] ... B -> [B, C, H, W]
-
-
-def get_dataset(dataset: Literal['cifar10', 'cifar100', 'imagenet'] = 'cifar10'):
-    """
-
-    """
     if dataset == 'cifar10':
-        return torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=normalize_image_fn())
+        my_dataset = torchvision.datasets.CIFAR10(root='/tmp/cifar10', train=pretrain, download=download, transform=transforms)
     elif dataset == 'cifar100':
-        return torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=normalize_image_fn())
-    elif dataset == 'imagenet':
-        return torchvision.datasets.ImageNet(root='./data', split='train', download=True, transform=normalize_image_fn())
+        my_dataset = torchvision.datasets.CIFAR100(root='/tmp/cifar100', train=pretrain, download=download, transform=transforms)
+    elif dataset == 'blurred_imagenet':
+        # lobotomized iterabledataset
+        split = 'train' if split in ['pretrain', 'finetune_train'] else 'validation'
+        my_dataset = make_blurred_imagenet_dataset(split=split, 
+                                                   num_classes=imagenet_num_classes, 
+                                                   transform=transforms, 
+                                                   **imagenet_download_kwargs)
+        return my_dataset
+    else:
+        raise ValueError(f"Invalid dataset: {dataset}")
+
+    if split == 'pretrain': return my_dataset
+    elif split == 'finetune_train': return random_split(my_dataset, [0.75, 0.25])[0]
+    elif split == 'finetune_validation': return random_split(my_dataset, [0.25, 0.75])[1]
+    else: raise ValueError(f"Invalid split: {split}")
